@@ -2,7 +2,7 @@
   "name": "god-eye",
   "private": false,
   "license": "MIT",
-  "description": "Public orbital intelligence mesh. Cloudflare Worker SPA + Three.js globe.",
+  "description": "Public orbital intelligence mesh. Cesium + Esri Maxar globe on a free-tier Cloudflare Worker.",
   "type": "module",
   "repository": {
     "type": "git",
