@@ -78,7 +78,8 @@
       .src-link { display: block; margin-top: 6px; font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
       .boot-links { display: flex; gap: 16px; margin-top: 16px; font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; }
       .boot-links a.dim { color: var(--muted); }
-      .about { position: absolute; inset: 0; background: color-mix(in oklab, var(--void) 70%, transparent); display: grid; place-items: center; z-index: 30; }
+      .about { position: absolute; inset: 0; background: color-mix(in oklab, var(--void) 70%, transparent); display: none; place-items: center; z-index: 30; pointer-events: auto; }
+      .about:not([hidden]) { display: grid; }
       .about-card { width: min(28rem, calc(100% - 2rem)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
       .about-card h2 { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.12em; font-size: 32px; margin: 8px 0; }
       .about-card p { font-size: 14px; line-height: 1.5; color: color-mix(in oklab, var(--paper) 85%, transparent); }

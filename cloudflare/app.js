@@ -424,11 +424,15 @@ document.getElementById("enter").onclick = () => {
 };
 
 document.getElementById("src").onclick = () => {
-  document.getElementById("about").hidden = false;
+  const el = document.getElementById("about");
+  el.hidden = false;
 };
 document.getElementById("about-close").onclick = () => {
   document.getElementById("about").hidden = true;
 };
+document.getElementById("about").addEventListener("click", (e) => {
+  if (e.target.id === "about") e.currentTarget.hidden = true;
+});
 
 let geoTimer;
 document.getElementById("q").addEventListener("input", (e) => {
