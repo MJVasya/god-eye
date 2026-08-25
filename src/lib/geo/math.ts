@@ -2,7 +2,9 @@ import * as THREE from "three";
 
 export const EARTH_RADIUS_KM = 6371;
 export const GLOBE_RADIUS = 1.6;
-export const SURFACE_LOOK_KM = 1500;
+export const SURFACE_LOOK_KM = 12;
+export const REGION_LOOK_KM = 45;
+export const GLOBE_LOOK_KM = 16000;
 export const MIN_CAMERA_DISTANCE = GLOBE_RADIUS * (1 + SURFACE_LOOK_KM / EARTH_RADIUS_KM);
 
 export function latLngToVec3(

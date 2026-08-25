@@ -94,6 +94,70 @@ function simulatedFlights(now = Date.now()) {
   return out;
 }
 
+function parseAdsb(ac) {
+  const out = [];
+  for (const a of ac || []) {
+    const lat = Number(a.lat);
+    const lng = Number(a.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    if (a.alt_baro === "ground") continue;
+    const altFt = Number(a.alt_geom ?? a.alt_baro);
+    const altKm = Number.isFinite(altFt) ? altFt * 0.0003048 : 10;
+    const gs = Number(a.gs || 0) * 0.514444;
+    const name = String(a.flight || a.r || a.hex || "UNK").trim() || String(a.hex);
+    out.push({
+      id: "icao-" + a.hex,
+      kind: "flight",
+      name,
+      lat,
+      lng,
+      altKm,
+      heading: Number(a.track || a.true_heading || 0),
+      speedMs: gs || 220,
+      country: String(a.t || "ADS-B"),
+      meta: `${a.t || "ADS-B"} · ${String(a.hex).toUpperCase()} · FL${Math.round((Number(a.alt_baro) || 0) / 100)}`,
+      source: "live",
+    });
+  }
+  return out;
+}
+
+async function loadAdsb() {
+  const out = [];
+  const seen = new Set();
+  const push = (rows) => {
+    for (const f of rows) {
+      if (seen.has(f.id)) continue;
+      seen.add(f.id);
+      out.push(f);
+    }
+  };
+  try {
+    const mil = await getJson("https://api.adsb.lol/v2/mil", 8000);
+    push(parseAdsb(mil.ac));
+  } catch {
+    /* mil optional */
+  }
+  const hubs = [
+    [40.64, -73.78],
+    [51.47, -0.46],
+    [35.55, 139.78],
+  ];
+  for (const [lat, lon] of hubs) {
+    if (out.length > 700) break;
+    try {
+      const data = await getJson(
+        `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/300`,
+        8000,
+      );
+      push(parseAdsb(data.ac));
+    } catch {
+      break;
+    }
+  }
+  return sample(out, 900);
+}
+
 async function loadFlights() {
   try {
     const data = await getJson("https://opensky-network.org/api/states/all", 8000);
@@ -121,6 +185,12 @@ async function loadFlights() {
     if (flights.length > 40) return { flights, source: "live" };
   } catch {
     /* OpenSky often blocks datacenter IPs; Cache API stores the fallback. */
+  }
+  try {
+    const flights = await loadAdsb();
+    if (flights.length > 20) return { flights, source: "live" };
+  } catch {
+    /* adsb.lol rate-limits */
   }
   return { flights: simulatedFlights(), source: "simulated" };
 }
@@ -314,7 +384,7 @@ export default {
       try {
         const layer = url.pathname.replace("/api/", "").replace(/\/$/, "");
         if (layer === "flights" || layer === "intel") {
-          return cachedJson(ctx, "flights", TTL.flights, loadFlights);
+          return cachedJson(ctx, "flights-v3", TTL.flights, loadFlights);
         }
         if (layer === "quakes") return cachedJson(ctx, "quakes", TTL.quakes, loadQuakes);
         if (layer === "tle") return cachedJson(ctx, "tle", TTL.tle, loadTle);

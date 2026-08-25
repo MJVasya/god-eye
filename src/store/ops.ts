@@ -76,7 +76,7 @@ export const useOps = create<OpsState>((set) => ({
       target,
       cameraMode: target ? "track" : "free",
     }),
-  requestFlyTo: (lat, lng, altKm = 1200) =>
+  requestFlyTo: (lat, lng, altKm = 12) =>
     set((s) => ({
       flyTo: { lat, lng, altKm, nonce: (s.flyTo?.nonce ?? 0) + 1 },
       cameraMode: "free",

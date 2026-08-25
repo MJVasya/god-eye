@@ -1,7 +1,7 @@
 # GOD EYE
 
 Public orbital intelligence mesh. Live globe, flights, satellites, quakes, and
-launch pads — Cesium + Esri satellite imagery (street zoom). Optional Google 3D tiles key. No billed key required.
+launch pads — no billed map keys, no Cesium ion token.
 
 **Live:** [godseye.gogol.me](https://godseye.gogol.me)
 
@@ -13,7 +13,7 @@ Inspired by [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view)
 (MIT, Copyright 2026 Bilawal Sidhu).
 
 That repo is the inspectable Cesium + Google Photorealistic 3D Tiles cockpit.
-This repo is a free-tier Cloudflare Worker rewrite: Cesium globe with Esri World Imagery, Cache API
+This repo is a free-tier Cloudflare Worker rewrite: Three.js globe, Cache API
 proxies, public feeds only. See [NOTICE](NOTICE).
 
 ## What ships

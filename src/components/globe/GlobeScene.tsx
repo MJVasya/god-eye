@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Stars } from "@react-three/drei";
-import { CameraRig } from "@/components/globe/CameraRig";
-import { ContactLayer, OrbitRing, TargetRing } from "@/components/globe/ContactLayer";
-import { Earth } from "@/components/globe/Earth";
+import { useEffect, useRef } from "react";
 import { compileTle, propagateSats, type LiveSat } from "@/lib/intel/propagate";
 import { getFlightsFn, getLaunchesFn, getQuakesFn, getTleFn } from "@/lib/intel/server";
-import type { Contact, LaunchPad } from "@/lib/geo/types";
+import type { Contact, LaunchPad, SensorMode } from "@/lib/geo/types";
+import {
+  createEarthViewer,
+  flyCamera,
+  loadCesium,
+  loadGoogleTiles,
+  upsertEntity,
+} from "@/lib/geo/cesium";
 import { useOps } from "@/store/ops";
+import { cn } from "@/lib/utils";
 
 export function GlobeScene() {
   const layers = useOps((s) => s.layers);
@@ -20,11 +23,76 @@ export function GlobeScene() {
   const setStatus = useOps((s) => s.setStatus);
   const setClock = useOps((s) => s.setClock);
 
-  const [flights, setFlights] = useState<Contact[]>([]);
-  const [quakes, setQuakes] = useState<Contact[]>([]);
-  const [sats, setSats] = useState<Contact[]>([]);
-  const [launches, setLaunches] = useState<Contact[]>([]);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<any>(null);
+  const dsRef = useRef<any>(null);
+  const cesiumRef = useRef<any>(null);
+  const flightsRef = useRef<Contact[]>([]);
+  const quakesRef = useRef<Contact[]>([]);
+  const satsRef = useRef<Contact[]>([]);
+  const launchesRef = useRef<Contact[]>([]);
   const satRecs = useRef<LiveSat[]>([]);
+  const targetRef = useRef(target);
+  const modeRef = useRef(cameraMode);
+  const layersRef = useRef(layers);
+  const syncRef = useRef<() => void>(() => {});
+  targetRef.current = target;
+  modeRef.current = cameraMode;
+  layersRef.current = layers;
+
+  useEffect(() => {
+    let dead = false;
+    let removeTick: (() => void) | undefined;
+    const host = hostRef.current;
+    if (!host) return;
+    void (async () => {
+      try {
+        const Cesium = await loadCesium();
+        if (dead || !hostRef.current) return;
+        cesiumRef.current = Cesium;
+        const viewer = createEarthViewer(Cesium, hostRef.current);
+        const ds = new Cesium.CustomDataSource("mesh");
+        await viewer.dataSources.add(ds);
+        viewerRef.current = viewer;
+        dsRef.current = ds;
+        syncRef.current();
+        viewer.selectedEntityChanged.addEventListener(() => {
+          const e = viewer.selectedEntity;
+          const c = e?.god as Contact | undefined;
+          if (c) setTarget(c);
+          else if (modeRef.current !== "cockpit") setTarget(null);
+        });
+        const key = window.localStorage.getItem("god-eye-google-tiles-key");
+        if (key) void loadGoogleTiles(Cesium, viewer, key).catch(() => undefined);
+        removeTick = viewer.scene.preUpdate.addEventListener(() => {
+          const t = targetRef.current;
+          const mode = modeRef.current;
+          if (!t || mode === "free") return;
+          const e = ds.entities.getById(t.id);
+          if (!e) return;
+          if (mode === "track") {
+            viewer.trackedEntity = e;
+            return;
+          }
+          viewer.trackedEntity = undefined;
+          const pos = e.position?.getValue(viewer.clock.currentTime);
+          if (!pos) return;
+          const heading = Cesium.Math.toRadians(t.heading || 0);
+          const pitch = Cesium.Math.toRadians(-18);
+          const range = 70 + Math.max(t.altKm, 0.2) * 4;
+          viewer.camera.lookAt(pos, new Cesium.HeadingPitchRange(heading, pitch, range));
+        });
+      } catch {
+        if (!dead) setStatus("GLOBE FAIL");
+      }
+    })();
+    return () => {
+      dead = true;
+      removeTick?.();
+      viewerRef.current?.destroy();
+      viewerRef.current = null;
+    };
+  }, [setTarget, setStatus]);
 
   useEffect(() => {
     let cancel = false;
@@ -33,9 +101,10 @@ export function GlobeScene() {
         setStatus("SYNC FLIGHTS");
         const data = await getFlightsFn();
         if (cancel) return;
-        setFlights(data.flights);
+        flightsRef.current = data.flights;
         setCounts({ flights: data.flights.length, source: data.source });
         setStatus(data.source === "live" ? "LIVE MESH" : "SIMULATED AIR");
+        syncEntities();
       } catch {
         if (!cancel) setStatus("FLIGHT FEED FAIL");
       }
@@ -48,25 +117,23 @@ export function GlobeScene() {
           getLaunchesFn().catch(() => [] as LaunchPad[]),
         ]);
         if (cancel) return;
-        setQuakes(q);
+        quakesRef.current = q;
         satRecs.current = compileTle(t);
-        const satContacts = propagateSats(satRecs.current, new Date());
-        setSats(satContacts);
-        setLaunches(
-          l.map((x) => ({
-            id: x.id,
-            kind: "launch" as const,
-            name: x.name,
-            lat: x.lat,
-            lng: x.lng,
-            altKm: 0.04,
-            heading: 0,
-            speedMs: 0,
-            meta: `${x.pad} · ${x.status} · ${new Date(x.when).toUTCString().slice(0, 22)}`,
-            source: "live" as const,
-          })),
-        );
-        setCounts({ sats: satContacts.length, quakes: q.length });
+        satsRef.current = propagateSats(satRecs.current, new Date());
+        launchesRef.current = l.map((x) => ({
+          id: x.id,
+          kind: "launch" as const,
+          name: x.name,
+          lat: x.lat,
+          lng: x.lng,
+          altKm: 0.04,
+          heading: 0,
+          speedMs: 0,
+          meta: `${x.pad} · ${x.status} · ${new Date(x.when).toUTCString().slice(0, 22)}`,
+          source: "live" as const,
+        }));
+        setCounts({ sats: satsRef.current.length, quakes: q.length });
+        syncEntities();
       } catch {
         if (!cancel) setStatus("LAYER PARTIAL");
       }
@@ -76,7 +143,9 @@ export function GlobeScene() {
     const fa = window.setInterval(() => void pullFlights(), 28_000);
     const sa = window.setInterval(() => {
       if (!satRecs.current.length) return;
-      setSats(propagateSats(satRecs.current, new Date()));
+      satsRef.current = propagateSats(satRecs.current, new Date());
+      setCounts({ sats: satsRef.current.length });
+      syncEntities();
     }, 2500);
     const ck = window.setInterval(() => setClock(Date.now()), 1000);
     return () => {
@@ -87,81 +156,66 @@ export function GlobeScene() {
     };
   }, [setCounts, setStatus, setClock]);
 
-  const iss = useMemo(() => sats.find((s) => s.kind === "iss") ?? null, [sats]);
-  const tracked = target
-    ? target.kind === "flight"
-      ? (flights.find((f) => f.id === target.id) ?? target)
-      : target.kind === "sat" || target.kind === "iss"
-        ? (sats.find((s) => s.id === target.id) ?? target)
-        : target
-    : null;
+  function syncEntities() {
+    const Cesium = cesiumRef.current;
+    const ds = dsRef.current;
+    if (!Cesium || !ds) return;
+    const layersNow = layersRef.current;
+    const bags: Contact[][] = [];
+    if (layersNow.flights) bags.push(flightsRef.current);
+    if (layersNow.satellites) bags.push(satsRef.current);
+    if (layersNow.earthquakes) bags.push(quakesRef.current);
+    if (layersNow.launches) bags.push(launchesRef.current);
+    const keep = new Set<string>();
+    for (const bag of bags) {
+      for (const c of bag) {
+        keep.add(c.id);
+        upsertEntity(Cesium, ds, c);
+      }
+    }
+    const remove: any[] = [];
+    for (const e of ds.entities.values) {
+      if (!keep.has(e.id)) remove.push(e);
+    }
+    for (const e of remove) ds.entities.remove(e);
+  }
+  syncRef.current = syncEntities;
+
+  useEffect(() => {
+    syncEntities();
+  }, [layers]);
+
+  useEffect(() => {
+    const Cesium = cesiumRef.current;
+    const viewer = viewerRef.current;
+    if (!Cesium || !viewer || !flyTo) return;
+    flyCamera(Cesium, viewer, flyTo.lat, flyTo.lng, flyTo.altKm);
+  }, [flyTo]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    if (!target || cameraMode === "free") {
+      viewer.trackedEntity = undefined;
+      const Cesium = cesiumRef.current;
+      if (Cesium) viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    }
+  }, [target, cameraMode]);
 
   return (
-    <Canvas
-      className="h-full w-full touch-none"
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-      camera={{ position: [0, 1.05, 4.6], fov: 42, near: 0.05, far: 80 }}
-      onPointerMissed={() => {
-        if (cameraMode !== "cockpit") setTarget(null);
-      }}
-    >
-      <color attach="background" args={["#07090c"]} />
-      <ambientLight intensity={0.22} />
-      <Stars radius={60} depth={30} count={5000} factor={2.6} fade speed={0} />
-      <Earth sensor={sensor} />
-      {layers.flights ? (
-        <ContactLayer
-          items={flights}
-          kind="flight"
-          scale={1}
-          sensor={sensor}
-          liveMotion
-          capacity={1800}
-          onPick={setTarget}
-        />
-      ) : null}
-      {layers.satellites ? (
-        <ContactLayer
-          items={sats}
-          kind="sat"
-          scale={0.85}
-          sensor={sensor}
-          liveMotion={false}
-          capacity={400}
-          onPick={setTarget}
-        />
-      ) : null}
-      {layers.earthquakes ? (
-        <ContactLayer
-          items={quakes}
-          kind="quake"
-          scale={1}
-          sensor={sensor}
-          liveMotion={false}
-          capacity={400}
-          onPick={setTarget}
-        />
-      ) : null}
-      {layers.launches ? (
-        <ContactLayer
-          items={launches}
-          kind="launch"
-          scale={1.4}
-          sensor={sensor}
-          liveMotion={false}
-          capacity={24}
-          onPick={setTarget}
-        />
-      ) : null}
-      {tracked ? <TargetRing contact={tracked} /> : null}
-      {tracked && (tracked.kind === "sat" || tracked.kind === "iss") ? (
-        <OrbitRing contact={tracked} />
-      ) : null}
-      {iss && layers.satellites && !tracked ? <OrbitRing contact={iss} /> : null}
-      <CameraRig mode={cameraMode} target={tracked} flyTo={flyTo} />
-    </Canvas>
+    <div
+      ref={hostRef}
+      className={cn("absolute inset-0 h-full w-full touch-none", sensorClass(sensor))}
+    />
   );
+}
+
+function sensorClass(sensor: SensorMode) {
+  if (sensor === "nvg") return "god-sensor-nvg";
+  if (sensor === "flir") return "god-sensor-flir";
+  if (sensor === "noir") return "god-sensor-noir";
+  if (sensor === "crt") return "god-sensor-crt";
+  return "";
 }
 
 export default GlobeScene;

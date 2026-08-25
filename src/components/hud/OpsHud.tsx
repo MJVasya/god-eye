@@ -14,7 +14,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatAlt, formatCoord, formatSpeed, SURFACE_LOOK_KM } from "@/lib/geo/math";
+import { formatAlt, formatCoord, formatSpeed, GLOBE_LOOK_KM, REGION_LOOK_KM, SURFACE_LOOK_KM } from "@/lib/geo/math";
 import { PLACES } from "@/lib/geo/places";
 import { briefFn, geocodeFn } from "@/lib/intel/server";
 import type { SensorMode } from "@/lib/geo/types";
@@ -84,7 +84,7 @@ export function OpsHud() {
       if (e.code === "KeyC" && target) {
         setCameraMode(cameraMode === "cockpit" ? "track" : "cockpit");
       }
-      if (e.code === "KeyR") requestFlyTo(20, -30, 2800);
+      if (e.code === "KeyR") requestFlyTo(20, -30, GLOBE_LOOK_KM);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -130,15 +130,15 @@ export function OpsHud() {
     if (id === "contacts") {
       if (!layers.flights) toggleLayer("flights");
       setSensor("optical");
-      requestFlyTo(48.1, 11.5, 900);
+      requestFlyTo(48.1, 11.5, REGION_LOOK_KM);
     } else if (id === "orbit") {
       if (!layers.satellites) toggleLayer("satellites");
       setSensor("optical");
-      requestFlyTo(0, -80, 3200);
+      requestFlyTo(0, -80, GLOBE_LOOK_KM);
     } else if (id === "seismic") {
       if (!layers.earthquakes) toggleLayer("earthquakes");
       setSensor("flir");
-      requestFlyTo(35.6, 139.7, 1400);
+      requestFlyTo(35.6, 139.7, 18);
     } else {
       if (!layers.flights) toggleLayer("flights");
       setSensor("nvg");
@@ -358,7 +358,7 @@ export function OpsHud() {
           </button>
           <button
             type="button"
-            onClick={() => requestFlyTo(20, -30, 2800)}
+            onClick={() => requestFlyTo(20, -30, GLOBE_LOOK_KM)}
             className="min-h-11 rounded-lg border border-line bg-void/80 px-3 py-2 font-mono text-micro tracking-wider text-muted"
           >
             <Globe2 className="mr-1 inline size-3.5" />
@@ -426,8 +426,9 @@ export function OpsHud() {
             <p className="font-mono text-micro tracking-[0.28em] text-accent">ABOUT · MIT</p>
             <h2 className="mt-2 font-display text-3xl tracking-[0.12em] text-paper">GOD EYE</h2>
             <p className="mt-3 text-sm leading-relaxed text-paper/85">
-              Independent rewrite for a free-tier Cloudflare Worker. Not a fork. The original
-              Cesium + Google Photorealistic 3D Tiles client is still public and inspectable.
+              Independent rewrite for a free-tier Cloudflare Worker. Cesium globe
+              with Esri World Imagery (street-zoom satellite). Not a fork of the
+              Cesium + Google 3D Tiles client — that original is still public.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <a
@@ -449,6 +450,29 @@ export function OpsHud() {
                 CESIUM ORIGINAL
               </a>
             </div>
+            <label className="mt-4 block font-mono text-micro tracking-widest text-muted">
+              OPTIONAL GOOGLE 3D TILES KEY
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="Maps Tile API key"
+                defaultValue={
+                  typeof window !== "undefined"
+                    ? window.localStorage.getItem("god-eye-google-tiles-key") || ""
+                    : ""
+                }
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v) window.localStorage.setItem("god-eye-google-tiles-key", v);
+                  else window.localStorage.removeItem("god-eye-google-tiles-key");
+                }}
+                className="mt-2 min-h-11 w-full rounded-lg border border-line bg-void px-3 font-mono text-xs tracking-normal text-paper outline-none"
+              />
+            </label>
+            <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
+              Reload after saving a key to load Google Photorealistic 3D Tiles. Esri
+              satellite is the free default.
+            </p>
             <button
               type="button"
               onClick={() => setAboutOpen(false)}
@@ -525,7 +549,7 @@ function BootScreen() {
         <p className="font-mono text-micro tracking-[0.28em] text-accent">SYSTEM BOOT</p>
         <h1 className="mt-2 font-display text-5xl tracking-[0.16em] text-paper">GOD EYE</h1>
         <p className="mt-2 text-sm text-muted">
-          A spy-satellite console built from public broadcasts — flights, orbit, quakes, pads.
+          Photoreal satellite globe — dive to the street. Public flights, orbit, quakes, pads.
         </p>
         <ul className="mt-5 space-y-1 font-mono text-hud text-paper/80">
           {lines.slice(0, Math.min(lines.length, line + 1)).map((l) => (

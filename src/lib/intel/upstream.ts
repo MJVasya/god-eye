@@ -115,6 +115,72 @@ function simulatedFlights(now = Date.now()): Contact[] {
   return out;
 }
 
+function parseAdsb(ac: Array<Record<string, unknown>> | undefined): Contact[] {
+  const out: Contact[] = [];
+  for (const a of ac ?? []) {
+    const lat = Number(a.lat);
+    const lng = Number(a.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    if (a.alt_baro === "ground") continue;
+    const altFt = Number(a.alt_geom ?? a.alt_baro);
+    const altKm = Number.isFinite(altFt) ? altFt * 0.0003048 : 10;
+    const gs = Number(a.gs || 0) * 0.514444;
+    const name = String(a.flight || a.r || a.hex || "UNK").trim();
+    out.push({
+      id: `icao-${a.hex}`,
+      kind: "flight",
+      name,
+      lat,
+      lng,
+      altKm,
+      heading: Number(a.track || a.true_heading || 0),
+      speedMs: gs || 220,
+      country: String(a.t || "ADS-B"),
+      meta: `${a.t || "ADS-B"} · ${String(a.hex).toUpperCase()} · FL${Math.round((Number(a.alt_baro) || 0) / 100)}`,
+      source: "live",
+    });
+  }
+  return out;
+}
+
+async function loadAdsb(): Promise<Contact[]> {
+  const out: Contact[] = [];
+  const seen = new Set<string>();
+  const push = (rows: Contact[]) => {
+    for (const f of rows) {
+      if (seen.has(f.id)) continue;
+      seen.add(f.id);
+      out.push(f);
+    }
+  };
+  try {
+    const mil = (await getJson("https://api.adsb.lol/v2/mil", 8000)) as {
+      ac?: Array<Record<string, unknown>>;
+    };
+    push(parseAdsb(mil.ac));
+  } catch {
+    /* mil optional */
+  }
+  const hubs = [
+    [40.64, -73.78],
+    [51.47, -0.46],
+    [35.55, 139.78],
+  ] as const;
+  for (const [lat, lon] of hubs) {
+    if (out.length > 700) break;
+    try {
+      const data = (await getJson(
+        `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/300`,
+        8000,
+      )) as { ac?: Array<Record<string, unknown>> };
+      push(parseAdsb(data.ac));
+    } catch {
+      break;
+    }
+  }
+  return sample(out, 900);
+}
+
 export async function loadFlights(): Promise<{ flights: Contact[]; source: FeedSource }> {
   try {
     const data = (await getJson("https://opensky-network.org/api/states/all", 14_000)) as {
@@ -124,6 +190,12 @@ export async function loadFlights(): Promise<{ flights: Contact[]; source: FeedS
     if (flights.length > 40) return { flights, source: "live" };
   } catch {
     /* OpenSky often blocks datacenter IPs. */
+  }
+  try {
+    const flights = await loadAdsb();
+    if (flights.length > 20) return { flights, source: "live" };
+  } catch {
+    /* adsb.lol rate-limits */
   }
   return { flights: simulatedFlights(), source: "simulated" };
 }
