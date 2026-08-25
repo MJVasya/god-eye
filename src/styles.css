@@ -58,7 +58,7 @@
 }
 
 .god-sensor-nvg .cesium-widget canvas {
-  filter: hue-rotate(72deg) saturate(2.1) brightness(0.72) contrast(1.25);
+  filter: hue-rotate(72deg) saturate(1.8) brightness(1.08) contrast(1.18);
 }
 .god-sensor-flir .cesium-widget canvas {
   filter: grayscale(1) contrast(1.7) sepia(1) hue-rotate(-40deg) saturate(5) brightness(1.05);

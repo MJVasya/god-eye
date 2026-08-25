@@ -1,9 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { geocode, loadFlights, loadLaunches, loadQuakes, loadTle } from "@/lib/intel/upstream";
 
-export const getFlightsFn = createServerFn({ method: "GET" }).handler(async () => {
-  return loadFlights();
-});
+export const getFlightsFn = createServerFn({ method: "GET" })
+  .validator((input?: { lat?: number; lng?: number }) => input ?? {})
+  .handler(async ({ data }) => {
+    return loadFlights(data.lat, data.lng);
+  });
 
 export const getQuakesFn = createServerFn({ method: "GET" }).handler(async () => {
   return loadQuakes();

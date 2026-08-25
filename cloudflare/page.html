@@ -33,7 +33,7 @@
         font-family: "IBM Plex Sans", system-ui, sans-serif; }
       canvas { display: block; }
       #globe { position: fixed; inset: 0; }
-      #globe.nvg .cesium-widget canvas { filter: hue-rotate(72deg) saturate(2.1) brightness(0.72) contrast(1.25); }
+      #globe.nvg .cesium-widget canvas { filter: hue-rotate(72deg) saturate(1.8) brightness(1.08) contrast(1.18); }
       #globe.flir .cesium-widget canvas { filter: grayscale(1) contrast(1.7) sepia(1) hue-rotate(-40deg) saturate(5); }
       #globe.noir .cesium-widget canvas { filter: grayscale(1) contrast(1.35) brightness(0.9); }
       #globe.crt .cesium-widget canvas { filter: contrast(1.25) saturate(1.15); }
@@ -83,10 +83,11 @@
       .card .row button { flex: 1; border: 0; border-radius: 8px; padding: 10px; font-family: "IBM Plex Mono", monospace; letter-spacing: 0.16em; cursor: pointer; }
       .go { background: var(--paper); color: var(--void); }
       .ghost { background: transparent; border: 1px solid var(--line) !important; color: var(--muted); }
-      .live { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); }
+      .live { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); text-align: center; }
+      .look { display: block; margin-top: 4px; color: var(--paper); letter-spacing: 0.04em; }
       .pill { background: var(--accent); color: var(--accent-fg); border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
       .pill.sim { background: #d7a35a; color: var(--void); }
-      .boot { position: fixed; inset: 0; background: var(--void); display: grid; place-items: center; z-index: 20; }
+      .boot { position: fixed; inset: 0; background: color-mix(in oklab, var(--void) 55%, transparent); display: grid; place-items: center; z-index: 20; }
       .boot-card { width: min(28rem, calc(100% - 2rem)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
       .boot-card h1 { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.16em; font-size: 48px; margin: 8px 0; }
       .boot-card button { width: 100%; margin-top: 20px; border: 0; background: var(--paper); color: var(--void); border-radius: 12px; padding: 12px; font-family: "IBM Plex Mono", monospace; letter-spacing: 0.2em; cursor: pointer; }
@@ -118,7 +119,7 @@
       <div class="boot-card">
         <p class="sub">SYSTEM BOOT</p>
         <h1>GOD EYE</h1>
-        <p>Photoreal satellite globe — dive to the street. Public flights, orbit, quakes, pads. Cesium + Esri. No billed key required.</p>
+        <p>Photoreal satellite globe. Opens over Chicago. Scroll to street, double-click to dive. Paste a Google Map Tiles key in SOURCE for 3D buildings.</p>
         <button id="enter" type="button">OPEN THE MESH</button>
         <div class="boot-links">
           <a href="https://github.com/MJVasya/god-eye" target="_blank" rel="noreferrer">SOURCE</a>
@@ -139,7 +140,7 @@
           <button id="src" class="src-link" type="button">SOURCE · MIT</button>
         </div>
       </header>
-      <div class="live"><span id="stamp"></span><span id="pill" class="pill">LIVE</span> <span id="status">STANDBY</span></div>
+      <div class="live"><span id="stamp"></span><span id="pill" class="pill">LIVE</span> <span id="status">STANDBY</span><span id="look" class="look"></span></div>
       <div class="search">
         <input id="q" placeholder="Find a city, airport, pad" />
         <ul id="hits" class="hits" hidden></ul>
@@ -154,7 +155,7 @@
         <div class="about-card">
           <p class="sub">ABOUT · MIT</p>
           <h2>GOD EYE</h2>
-          <p>Independent rewrite. Cesium globe with Esri World Imagery so you can zoom into real terrain. Not a fork of the Google 3D Tiles client — that original is still public.</p>
+          <p>Independent rewrite. Cesium + Esri Maxar satellite with real terrain — dive to rooftops, double-click to go closer. Not a fork of the Google 3D Tiles client. Paste a Map Tiles key below for photoreal buildings.</p>
           <a class="primary" href="https://github.com/MJVasya/god-eye" target="_blank" rel="noreferrer">THIS SOURCE</a>
           <a href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noreferrer">CESIUM ORIGINAL</a>
           <input id="gkey" type="password" autocomplete="off" placeholder="Optional Google Map Tiles key" />

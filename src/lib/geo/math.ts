@@ -2,10 +2,15 @@ import * as THREE from "three";
 
 export const EARTH_RADIUS_KM = 6371;
 export const GLOBE_RADIUS = 1.6;
-export const SURFACE_LOOK_KM = 12;
-export const REGION_LOOK_KM = 45;
+/** Street-level dive — cars and rooftops on Esri Maxar. */
+export const STREET_LOOK_KM = 0.55;
+/** City oblique — photoreal downtown, the default useful view. */
+export const SURFACE_LOOK_KM = 2.4;
+export const REGION_LOOK_KM = 18;
 export const GLOBE_LOOK_KM = 16000;
-export const MIN_CAMERA_DISTANCE = GLOBE_RADIUS * (1 + SURFACE_LOOK_KM / EARTH_RADIUS_KM);
+export const MIN_CAMERA_DISTANCE = GLOBE_RADIUS * (1 + STREET_LOOK_KM / EARTH_RADIUS_KM);
+
+export const HOME = { name: "Chicago", lat: 41.8781, lng: -87.6298 };
 
 export function latLngToVec3(
   lat: number,

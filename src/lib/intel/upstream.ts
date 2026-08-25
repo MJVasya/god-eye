@@ -74,7 +74,31 @@ function parseOpensky(states: OpenskyState[]): Contact[] {
   return sample(out, 1600);
 }
 
-function simulatedFlights(now = Date.now()): Contact[] {
+function simulatedFlights(now = Date.now(), around?: { lat: number; lng: number }): Contact[] {
+  if (around) {
+    const out: Contact[] = [];
+    const t = now / 1000;
+    for (let i = 0; i < 80; i++) {
+      const ang = (i / 80) * Math.PI * 2 + t / 180;
+      const ring = 0.15 + (i % 7) * 0.12;
+      const lat = around.lat + Math.cos(ang) * ring;
+      const lng = around.lng + Math.sin(ang) * ring * 1.3;
+      out.push({
+        id: `sim-${i}`,
+        kind: "flight",
+        name: `N${(i % 90) + 10}${String.fromCharCode(65 + (i % 26))}`,
+        lat,
+        lng: ((lng + 540) % 360) - 180,
+        altKm: 3 + (i % 11),
+        heading: ((ang * 180) / Math.PI + 90) % 360,
+        speedMs: 180 + (i % 60),
+        country: "SIM",
+        meta: "LOCAL · SIMULATED",
+        source: "simulated",
+      });
+    }
+    return out;
+  }
   const hubs = [
     [41.98, -87.9, "ORD"],
     [33.94, -118.41, "LAX"],
@@ -143,61 +167,79 @@ function parseAdsb(ac: Array<Record<string, unknown>> | undefined): Contact[] {
   return out;
 }
 
-async function loadAdsb(): Promise<Contact[]> {
-  const out: Contact[] = [];
+function mergeFlights(...bags: Contact[][]) {
   const seen = new Set<string>();
-  const push = (rows: Contact[]) => {
-    for (const f of rows) {
+  const out: Contact[] = [];
+  for (const bag of bags) {
+    for (const f of bag) {
       if (seen.has(f.id)) continue;
       seen.add(f.id);
       out.push(f);
-    }
-  };
-  try {
-    const mil = (await getJson("https://api.adsb.lol/v2/mil", 8000)) as {
-      ac?: Array<Record<string, unknown>>;
-    };
-    push(parseAdsb(mil.ac));
-  } catch {
-    /* mil optional */
-  }
-  const hubs = [
-    [40.64, -73.78],
-    [51.47, -0.46],
-    [35.55, 139.78],
-  ] as const;
-  for (const [lat, lon] of hubs) {
-    if (out.length > 700) break;
-    try {
-      const data = (await getJson(
-        `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/300`,
-        8000,
-      )) as { ac?: Array<Record<string, unknown>> };
-      push(parseAdsb(data.ac));
-    } catch {
-      break;
     }
   }
   return sample(out, 900);
 }
 
-export async function loadFlights(): Promise<{ flights: Contact[]; source: FeedSource }> {
-  try {
-    const data = (await getJson("https://opensky-network.org/api/states/all", 14_000)) as {
-      states?: OpenskyState[];
-    };
-    const flights = parseOpensky(data.states ?? []);
-    if (flights.length > 40) return { flights, source: "live" };
-  } catch {
-    /* OpenSky often blocks datacenter IPs. */
+async function loadAdsbAround(lat: number, lng: number): Promise<Contact[]> {
+  const data = (await getJson(
+    `https://api.adsb.lol/v2/lat/${lat}/lon/${lng}/dist/250`,
+    8000,
+  )) as { ac?: Array<Record<string, unknown>> };
+  return parseAdsb(data.ac);
+}
+
+async function loadAdsbMil(): Promise<Contact[]> {
+  const mil = (await getJson("https://api.adsb.lol/v2/mil", 8000)) as {
+    ac?: Array<Record<string, unknown>>;
+  };
+  return parseAdsb(mil.ac);
+}
+
+async function loadOpenskyBox(lat: number, lng: number): Promise<Contact[]> {
+  const lamin = (lat - 3.5).toFixed(2);
+  const lamax = (lat + 3.5).toFixed(2);
+  const lomin = (lng - 5).toFixed(2);
+  const lomax = (lng + 5).toFixed(2);
+  const data = (await getJson(
+    `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`,
+    8000,
+  )) as { states?: OpenskyState[] };
+  return parseOpensky(data.states ?? []);
+}
+
+export async function loadFlights(
+  lat?: number,
+  lng?: number,
+): Promise<{ flights: Contact[]; source: FeedSource }> {
+  const around =
+    Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat: lat as number, lng: lng as number }
+      : undefined;
+  const bags: Contact[][] = [];
+  if (around) {
+    try {
+      bags.push(await loadAdsbAround(around.lat, around.lng));
+    } catch {
+      /* rate-limit */
+    }
+    if (bags.reduce((n, b) => n + b.length, 0) < 25) {
+      try {
+        bags.push(await loadOpenskyBox(around.lat, around.lng));
+      } catch {
+        /* blocked */
+      }
+    }
   }
-  try {
-    const flights = await loadAdsb();
-    if (flights.length > 20) return { flights, source: "live" };
-  } catch {
-    /* adsb.lol rate-limits */
+  if (bags.reduce((n, b) => n + b.length, 0) < 15) {
+    try {
+      bags.push(await loadAdsbMil());
+    } catch {
+      /* mil optional */
+    }
   }
-  return { flights: simulatedFlights(), source: "simulated" };
+  const flights = mergeFlights(...bags);
+  if (flights.length > 8) return { flights, source: "live" };
+  return { flights: simulatedFlights(Date.now(), around), source: "simulated" };
 }
 
 export async function loadQuakes(): Promise<Contact[]> {

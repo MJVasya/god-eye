@@ -1,7 +1,7 @@
 # GOD EYE
 
-Public orbital intelligence mesh. Live globe, flights, satellites, quakes, and
-launch pads — Cesium + Esri satellite imagery (street zoom). Optional Google 3D tiles key. No billed key required.
+Public orbital intelligence mesh. Photoreal Cesium globe, flights, satellites,
+quakes, and launch pads — no billed map keys required.
 
 **Live:** [godseye.gogol.me](https://godseye.gogol.me)
 
@@ -13,8 +13,8 @@ Inspired by [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view)
 (MIT, Copyright 2026 Bilawal Sidhu).
 
 That repo is the inspectable Cesium + Google Photorealistic 3D Tiles cockpit.
-This repo is a free-tier Cloudflare Worker rewrite: Cesium globe with Esri World Imagery, Cache API
-proxies, public feeds only. See [NOTICE](NOTICE).
+This repo is a free-tier Cloudflare Worker rewrite: Cesium + Esri World Imagery
+and ArcGIS terrain, Cache API proxies, public feeds only. See [NOTICE](NOTICE).
 
 ## What ships
 
@@ -22,11 +22,13 @@ proxies, public feeds only. See [NOTICE](NOTICE).
 |---|---|
 | [godseye.gogol.me](https://godseye.gogol.me) | Cloudflare Worker SPA + `/api/*` |
 | `cloudflare/` | Deployable Worker source |
-| `src/` | React / Three.js HUD used in the Grok preview |
+| `src/` | React / Cesium HUD used in the Grok preview |
 
-Layers: ADS-B flights (OpenSky, with a labeled SIM fallback), SGP4 satellites
-(SatNOGS TLE), USGS earthquakes, Launch Library 2 pads. Sensor looks: optical,
-NVG, FLIR, noir, CRT. Click a contact, cockpit / track camera, search.
+Opens over downtown Chicago at 2.4 km, oblique. Double-click dives to street.
+Search any city. Optional Google Map Tiles key in SOURCE loads photoreal 3D
+buildings (same mesh as the original). Layers: ADS-B around the camera
+(adsb.lol / OpenSky, labeled SIM fallback), SGP4 satellites, USGS earthquakes,
+Launch Library 2 pads.
 
 ## Deploy (Cloudflare free plan)
 
@@ -54,8 +56,8 @@ Runtime storage is the Cache API only. No secrets.
 
 Not for navigation or emergency use. Feeds can be delayed, modeled, or empty
 (OpenSky and CelesTrak are often blocked from Workers; Launch Library 2 rate
-limits). Google Photorealistic 3D Tiles are **not** included — they need a
-billed Maps key.
+limits). Google Photorealistic 3D Tiles are **optional** — paste your own Map
+Tiles key; we do not ship a billed Google key.
 
 ## License
 

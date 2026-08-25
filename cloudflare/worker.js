@@ -122,7 +122,7 @@ function parseAdsb(ac) {
   return out;
 }
 
-async function loadAdsb() {
+async function loadAdsb(lat, lng) {
   const out = [];
   const seen = new Set();
   const push = (rows) => {
@@ -132,67 +132,99 @@ async function loadAdsb() {
       out.push(f);
     }
   };
-  try {
-    const mil = await getJson("https://api.adsb.lol/v2/mil", 8000);
-    push(parseAdsb(mil.ac));
-  } catch {
-    /* mil optional */
-  }
-  const hubs = [
-    [40.64, -73.78],
-    [51.47, -0.46],
-    [35.55, 139.78],
-  ];
-  for (const [lat, lon] of hubs) {
-    if (out.length > 700) break;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
     try {
       const data = await getJson(
-        `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/300`,
+        `https://api.adsb.lol/v2/lat/${lat}/lon/${lng}/dist/250`,
         8000,
       );
       push(parseAdsb(data.ac));
     } catch {
-      break;
+      /* rate-limit */
+    }
+  }
+  if (out.length < 15) {
+    try {
+      const mil = await getJson("https://api.adsb.lol/v2/mil", 8000);
+      push(parseAdsb(mil.ac));
+    } catch {
+      /* mil optional */
     }
   }
   return sample(out, 900);
 }
 
-async function loadFlights() {
-  try {
-    const data = await getJson("https://opensky-network.org/api/states/all", 8000);
-    const out = [];
-    for (const s of data.states || []) {
-      const lat = Number(s[6]);
-      const lng = Number(s[5]);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || s[8]) continue;
-      const alt = Number(s[13] ?? s[7] ?? 0) / 1000;
-      out.push({
-        id: `icao-${s[0]}`,
-        kind: "flight",
-        name: String(s[1] || "").trim() || String(s[0] || "UNK"),
-        lat,
-        lng,
-        altKm: Number.isFinite(alt) ? alt : 10,
-        heading: Number(s[10] || 0),
-        speedMs: Number(s[9] || 220),
-        country: String(s[2] || ""),
-        meta: `${s[2] || "—"} · FL${Math.round(((Number(s[7]) || 0) * 3.28084) / 100)}`,
-        source: "live",
-      });
-    }
-    const flights = sample(out, 800);
-    if (flights.length > 40) return { flights, source: "live" };
-  } catch {
-    /* OpenSky often blocks datacenter IPs; Cache API stores the fallback. */
+function simulatedAround(lat, lng, now = Date.now()) {
+  const out = [];
+  const t = now / 1000;
+  for (let i = 0; i < 80; i++) {
+    const ang = (i / 80) * Math.PI * 2 + t / 180;
+    const ring = 0.15 + (i % 7) * 0.12;
+    out.push({
+      id: `sim-${i}`,
+      kind: "flight",
+      name: `N${(i % 90) + 10}${String.fromCharCode(65 + (i % 26))}`,
+      lat: lat + Math.cos(ang) * ring,
+      lng: ((lng + Math.sin(ang) * ring * 1.3 + 540) % 360) - 180,
+      altKm: 3 + (i % 11),
+      heading: ((ang * 180) / Math.PI + 90) % 360,
+      speedMs: 180 + (i % 60),
+      country: "SIM",
+      meta: "LOCAL · SIMULATED",
+      source: "simulated",
+    });
   }
+  return out;
+}
+
+async function loadFlights(lat, lng) {
+  const around = Number.isFinite(lat) && Number.isFinite(lng);
   try {
-    const flights = await loadAdsb();
-    if (flights.length > 20) return { flights, source: "live" };
+    const flights = await loadAdsb(around ? lat : undefined, around ? lng : undefined);
+    if (flights.length > 8) return { flights, source: "live" };
   } catch {
     /* adsb.lol rate-limits */
   }
-  return { flights: simulatedFlights(), source: "simulated" };
+  if (around) {
+    try {
+      const lamin = (lat - 3.5).toFixed(2);
+      const lamax = (lat + 3.5).toFixed(2);
+      const lomin = (lng - 5).toFixed(2);
+      const lomax = (lng + 5).toFixed(2);
+      const data = await getJson(
+        `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`,
+        8000,
+      );
+      const out = [];
+      for (const s of data.states || []) {
+        const slat = Number(s[6]);
+        const slng = Number(s[5]);
+        if (!Number.isFinite(slat) || !Number.isFinite(slng) || s[8]) continue;
+        const alt = Number(s[13] ?? s[7] ?? 0) / 1000;
+        out.push({
+          id: `icao-${s[0]}`,
+          kind: "flight",
+          name: String(s[1] || "").trim() || String(s[0] || "UNK"),
+          lat: slat,
+          lng: slng,
+          altKm: Number.isFinite(alt) ? alt : 10,
+          heading: Number(s[10] || 0),
+          speedMs: Number(s[9] || 220),
+          country: String(s[2] || ""),
+          meta: `${s[2] || "—"} · FL${Math.round(((Number(s[7]) || 0) * 3.28084) / 100)}`,
+          source: "live",
+        });
+      }
+      const flights = sample(out, 800);
+      if (flights.length > 8) return { flights, source: "live" };
+    } catch {
+      /* OpenSky often blocks datacenter IPs */
+    }
+  }
+  return {
+    flights: around ? simulatedAround(lat, lng) : simulatedFlights(),
+    source: "simulated",
+  };
 }
 
 async function loadQuakes() {
@@ -384,7 +416,15 @@ export default {
       try {
         const layer = url.pathname.replace("/api/", "").replace(/\/$/, "");
         if (layer === "flights" || layer === "intel") {
-          return cachedJson(ctx, "flights-v3", TTL.flights, loadFlights);
+          const lat = Number(url.searchParams.get("lat"));
+          const lng = Number(url.searchParams.get("lng"));
+          const around = Number.isFinite(lat) && Number.isFinite(lng);
+          const bucket = around
+            ? `${(Math.round(lat * 2) / 2).toFixed(1)}:${(Math.round(lng * 2) / 2).toFixed(1)}`
+            : "global";
+          return cachedJson(ctx, "flights-v4:" + bucket, TTL.flights, () =>
+            loadFlights(around ? lat : undefined, around ? lng : undefined),
+          );
         }
         if (layer === "quakes") return cachedJson(ctx, "quakes", TTL.quakes, loadQuakes);
         if (layer === "tle") return cachedJson(ctx, "tle", TTL.tle, loadTle);

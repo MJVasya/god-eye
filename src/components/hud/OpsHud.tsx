@@ -14,7 +14,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatAlt, formatCoord, formatSpeed, GLOBE_LOOK_KM, REGION_LOOK_KM, SURFACE_LOOK_KM } from "@/lib/geo/math";
+import { formatAlt, formatCoord, formatSpeed, GLOBE_LOOK_KM, HOME, REGION_LOOK_KM, STREET_LOOK_KM, SURFACE_LOOK_KM } from "@/lib/geo/math";
 import { PLACES } from "@/lib/geo/places";
 import { briefFn, geocodeFn } from "@/lib/intel/server";
 import type { SensorMode } from "@/lib/geo/types";
@@ -52,6 +52,7 @@ export function OpsHud() {
   const clock = useOps((s) => s.clock);
   const brief = useOps((s) => s.brief);
   const briefing = useOps((s) => s.briefing);
+  const look = useOps((s) => s.look);
   const toggleLayer = useOps((s) => s.toggleLayer);
   const setSensor = useOps((s) => s.setSensor);
   const setCameraMode = useOps((s) => s.setCameraMode);
@@ -59,12 +60,16 @@ export function OpsHud() {
   const requestFlyTo = useOps((s) => s.requestFlyTo);
   const setBrief = useOps((s) => s.setBrief);
   const setBriefing = useOps((s) => s.setBriefing);
+  const bumpTiles = useOps((s) => s.bumpTiles);
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<{ name: string; lat: number; lng: number }[]>([]);
   const [jumpOpen, setJumpOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [gkey, setGkey] = useState(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem("god-eye-google-tiles-key") || "" : "",
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,11 +131,11 @@ export function OpsHud() {
     setBrief(res.ok ? res.text : res.error);
   };
 
-  const runMission = (id: "contacts" | "orbit" | "seismic" | "night") => {
+  const runMission = (id: "contacts" | "orbit" | "seismic" | "city") => {
     if (id === "contacts") {
       if (!layers.flights) toggleLayer("flights");
       setSensor("optical");
-      requestFlyTo(48.1, 11.5, REGION_LOOK_KM);
+      requestFlyTo(40.641, -73.778, REGION_LOOK_KM);
     } else if (id === "orbit") {
       if (!layers.satellites) toggleLayer("satellites");
       setSensor("optical");
@@ -138,11 +143,11 @@ export function OpsHud() {
     } else if (id === "seismic") {
       if (!layers.earthquakes) toggleLayer("earthquakes");
       setSensor("flir");
-      requestFlyTo(35.6, 139.7, 18);
+      requestFlyTo(35.676, 139.65, SURFACE_LOOK_KM);
     } else {
       if (!layers.flights) toggleLayer("flights");
-      setSensor("nvg");
-      requestFlyTo(41.88, -87.63, SURFACE_LOOK_KM);
+      setSensor("optical");
+      requestFlyTo(HOME.lat, HOME.lng, SURFACE_LOOK_KM);
     }
   };
 
@@ -176,6 +181,11 @@ export function OpsHud() {
         </div>
         <div className="hidden items-center gap-4 font-mono text-hud text-muted md:flex">
           <span className="tabular-nums">{stamp}</span>
+          {look ? (
+            <span className="tabular-nums text-paper/80">
+              {formatCoord(look.lat, look.lng)} · {formatAlt(look.altKm)}
+            </span>
+          ) : null}
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-accent-fg",
@@ -206,7 +216,7 @@ export function OpsHud() {
                   type="button"
                   className="min-h-11 w-full px-3 py-2 text-left text-sm text-paper hover:bg-raised"
                   onClick={() => {
-                    requestFlyTo(h.lat, h.lng, SURFACE_LOOK_KM);
+                    requestFlyTo(h.lat, h.lng, STREET_LOOK_KM);
                     setHits([]);
                     setQuery(h.name);
                   }}
@@ -248,7 +258,7 @@ export function OpsHud() {
           JUMP
         </button>
         <p className="mt-1 hidden font-mono text-micro tracking-wider text-muted md:block">
-          1–5 SENSOR · C COCKPIT · R RESET
+          DBL-CLICK DIVE · 1–5 SENSOR · C COCKPIT · R RESET
         </p>
       </aside>
 
@@ -334,10 +344,20 @@ export function OpsHud() {
           </button>
           <button
             type="button"
-            onClick={() => runMission("night")}
+            onClick={() => runMission("city")}
             className="min-h-11 rounded-lg border border-line bg-surface/90 px-3 py-2 font-mono text-micro tracking-wider text-paper"
           >
-            NIGHT WATCH
+            CITY DIVE
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSensor("optical");
+              requestFlyTo(HOME.lat, HOME.lng, STREET_LOOK_KM);
+            }}
+            className="min-h-11 rounded-lg border border-line bg-surface/90 px-3 py-2 font-mono text-micro tracking-wider text-paper"
+          >
+            STREET
           </button>
           <button
             type="button"
@@ -426,9 +446,10 @@ export function OpsHud() {
             <p className="font-mono text-micro tracking-[0.28em] text-accent">ABOUT · MIT</p>
             <h2 className="mt-2 font-display text-3xl tracking-[0.12em] text-paper">GOD EYE</h2>
             <p className="mt-3 text-sm leading-relaxed text-paper/85">
-              Independent rewrite for a free-tier Cloudflare Worker. Cesium globe
-              with Esri World Imagery (street-zoom satellite). Not a fork of the
-              Cesium + Google 3D Tiles client — that original is still public.
+              Independent rewrite. Cesium + Esri Maxar satellite with real terrain
+              — dive to rooftops, double-click to go closer. Not a fork of the
+              Google Photorealistic 3D Tiles client; paste a Map Tiles key below
+              if you want that mesh.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <a
@@ -456,22 +477,28 @@ export function OpsHud() {
                 type="password"
                 autoComplete="off"
                 placeholder="Maps Tile API key"
-                defaultValue={
-                  typeof window !== "undefined"
-                    ? window.localStorage.getItem("god-eye-google-tiles-key") || ""
-                    : ""
-                }
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (v) window.localStorage.setItem("god-eye-google-tiles-key", v);
-                  else window.localStorage.removeItem("god-eye-google-tiles-key");
-                }}
+                value={gkey}
+                onChange={(e) => setGkey(e.target.value)}
                 className="mt-2 min-h-11 w-full rounded-lg border border-line bg-void px-3 font-mono text-xs tracking-normal text-paper outline-none"
               />
             </label>
+            <button
+              type="button"
+              onClick={() => {
+                const v = gkey.trim();
+                if (v) window.localStorage.setItem("god-eye-google-tiles-key", v);
+                else window.localStorage.removeItem("god-eye-google-tiles-key");
+                bumpTiles();
+                requestFlyTo(HOME.lat, HOME.lng, STREET_LOOK_KM);
+                setAboutOpen(false);
+              }}
+              className="mt-2 flex min-h-11 w-full items-center justify-center rounded-lg border border-accent/40 bg-void font-mono text-micro tracking-widest text-accent"
+            >
+              LOAD 3D TILES
+            </button>
             <p className="mt-2 font-mono text-micro leading-relaxed text-muted">
-              Reload after saving a key to load Google Photorealistic 3D Tiles. Esri
-              satellite is the free default.
+              Esri Maxar satellite is the free default. A Google Map Tiles key
+              loads photoreal 3D buildings — same mesh as the original.
             </p>
             <button
               type="button"
@@ -532,11 +559,12 @@ function Stat({
 
 function BootScreen() {
   const setBooted = useOps((s) => s.setBooted);
+  const requestFlyTo = useOps((s) => s.requestFlyTo);
   const [line, setLine] = useState(0);
   const lines = [
     "PUBLIC SIGNALS ONLINE",
-    "ADSB / CELESTRAK / USGS / LL2",
-    "NO CLASSIFIED PATHS",
+    "ESRI MAXAR / ADSB / USGS / TLE",
+    "DOUBLE-CLICK TO DIVE",
     "MESH READY",
   ];
   useEffect(() => {
@@ -544,12 +572,12 @@ function BootScreen() {
     return () => window.clearInterval(t);
   }, []);
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-void">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-void/55">
       <div className="w-[min(28rem,calc(100%-2rem))] rounded-2xl border border-line bg-surface p-6">
         <p className="font-mono text-micro tracking-[0.28em] text-accent">SYSTEM BOOT</p>
         <h1 className="mt-2 font-display text-5xl tracking-[0.16em] text-paper">GOD EYE</h1>
         <p className="mt-2 text-sm text-muted">
-          Photoreal satellite globe — dive to the street. Public flights, orbit, quakes, pads.
+          Photoreal satellite globe. Opens over Chicago. Scroll to street, double-click to dive.
         </p>
         <ul className="mt-5 space-y-1 font-mono text-hud text-paper/80">
           {lines.slice(0, Math.min(lines.length, line + 1)).map((l) => (
@@ -561,7 +589,10 @@ function BootScreen() {
         </ul>
         <button
           type="button"
-          onClick={setBooted}
+          onClick={() => {
+            setBooted();
+            requestFlyTo(HOME.lat, HOME.lng, SURFACE_LOOK_KM);
+          }}
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-paper py-3 font-mono text-xs tracking-[0.2em] text-void"
         >
           <LocateFixed className="size-4" />
@@ -569,7 +600,7 @@ function BootScreen() {
         </button>
         <p className="mt-3 flex items-center gap-1 font-mono text-micro text-muted">
           <Crosshair className="size-3" />
-          Click any contact. 1–5 cycles sensors.
+          Search any city. Paste a Google Map Tiles key in SOURCE for 3D buildings.
         </p>
         <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 font-mono text-micro tracking-widest">
           <a

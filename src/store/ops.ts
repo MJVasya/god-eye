@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CameraMode, Contact, SensorMode } from "@/lib/geo/types";
+import { SURFACE_LOOK_KM } from "@/lib/geo/math";
 
 export type Layers = {
   flights: boolean;
@@ -15,6 +16,13 @@ export type FlyTo = {
   nonce: number;
 };
 
+export type Look = {
+  lat: number;
+  lng: number;
+  altKm: number;
+  heading: number;
+};
+
 type OpsState = {
   booted: boolean;
   layers: Layers;
@@ -22,6 +30,7 @@ type OpsState = {
   cameraMode: CameraMode;
   target: Contact | null;
   flyTo: FlyTo | null;
+  look: Look | null;
   search: string;
   status: string;
   flightCount: number;
@@ -31,12 +40,14 @@ type OpsState = {
   clock: number;
   brief: string;
   briefing: boolean;
+  tilesNonce: number;
   setBooted: () => void;
   toggleLayer: (k: keyof Layers) => void;
   setSensor: (s: SensorMode) => void;
   setCameraMode: (m: CameraMode) => void;
   setTarget: (c: Contact | null) => void;
   requestFlyTo: (lat: number, lng: number, altKm?: number) => void;
+  setLook: (look: Look) => void;
   setSearch: (q: string) => void;
   setStatus: (s: string) => void;
   setCounts: (p: {
@@ -48,6 +59,7 @@ type OpsState = {
   setClock: (n: number) => void;
   setBrief: (s: string) => void;
   setBriefing: (v: boolean) => void;
+  bumpTiles: () => void;
 };
 
 export const useOps = create<OpsState>((set) => ({
@@ -57,6 +69,7 @@ export const useOps = create<OpsState>((set) => ({
   cameraMode: "free",
   target: null,
   flyTo: null,
+  look: null,
   search: "",
   status: "STANDBY",
   flightCount: 0,
@@ -66,6 +79,7 @@ export const useOps = create<OpsState>((set) => ({
   clock: Date.now(),
   brief: "",
   briefing: false,
+  tilesNonce: 0,
   setBooted: () => set({ booted: true }),
   toggleLayer: (k) =>
     set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
@@ -76,12 +90,13 @@ export const useOps = create<OpsState>((set) => ({
       target,
       cameraMode: target ? "track" : "free",
     }),
-  requestFlyTo: (lat, lng, altKm = 12) =>
+  requestFlyTo: (lat, lng, altKm = SURFACE_LOOK_KM) =>
     set((s) => ({
       flyTo: { lat, lng, altKm, nonce: (s.flyTo?.nonce ?? 0) + 1 },
       cameraMode: "free",
       target: null,
     })),
+  setLook: (look) => set({ look }),
   setSearch: (search) => set({ search }),
   setStatus: (status) => set({ status }),
   setCounts: (p) =>
@@ -94,4 +109,5 @@ export const useOps = create<OpsState>((set) => ({
   setClock: (clock) => set({ clock }),
   setBrief: (brief) => set({ brief }),
   setBriefing: (briefing) => set({ briefing }),
+  bumpTiles: () => set((s) => ({ tilesNonce: s.tilesNonce + 1 })),
 }));

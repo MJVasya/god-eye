@@ -2,6 +2,12 @@
 const C = window.Cesium;
 C.Ion.defaultAccessToken = "";
 
+const HOME = { lat: 41.8781, lng: -87.6298 };
+const STREET_KM = 0.55;
+const CITY_KM = 2.4;
+const REGION_KM = 18;
+const GLOBE_KM = 16000;
+
 const state = {
   layers: { flights: true, satellites: true, earthquakes: true, launches: true },
   sensor: "optical",
@@ -36,39 +42,82 @@ const viewer = new C.Viewer("globe", {
   selectionIndicator: true,
   shouldAnimate: true,
 });
-viewer.scene.globe.enableLighting = true;
-viewer.scene.globe.atmosphereLightIntensity = 25;
+viewer.scene.globe.enableLighting = false;
+viewer.scene.globe.dynamicAtmosphereLighting = false;
 viewer.scene.globe.showGroundAtmosphere = true;
-viewer.scene.screenSpaceCameraController.minimumZoomDistance = 180;
+viewer.scene.globe.baseColor = C.Color.fromCssColorString("#061018");
+viewer.scene.fog.density = 1.1e-4;
+viewer.scene.screenSpaceCameraController.minimumZoomDistance = 60;
 viewer.scene.screenSpaceCameraController.maximumZoomDistance = 4.5e7;
-viewer.scene.fog.density = 2.0e-4;
-viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(-30, 20, 1.6e7) });
+viewer.shadows = false;
+viewer.scene.highDynamicRange = false;
+viewer.camera.setView({
+  destination: C.Cartesian3.fromDegrees(HOME.lng, HOME.lat, 2800),
+  orientation: {
+    heading: C.Math.toRadians(28),
+    pitch: C.Math.toRadians(-40),
+    roll: 0,
+  },
+});
+void (async () => {
+  try {
+    if (C.ArcGISTiledElevationTerrainProvider && C.ArcGISTiledElevationTerrainProvider.fromUrl) {
+      viewer.terrainProvider = await C.ArcGISTiledElevationTerrainProvider.fromUrl(
+        "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
+      );
+      viewer.scene.globe.depthTestAgainstTerrain = true;
+    }
+  } catch {
+    /* ellipsoid */
+  }
+})();
 const mesh = new C.CustomDataSource("mesh");
 viewer.dataSources.add(mesh);
 
 const COLORS = {
-  flight: C.Color.fromCssColorString("#8fde9c"),
-  sat: C.Color.fromCssColorString("#7eb6ff"),
-  iss: C.Color.fromCssColorString("#e7eee8"),
-  quake: C.Color.fromCssColorString("#e25a45"),
-  launch: C.Color.fromCssColorString("#d7a35a"),
+  flight: "#8fde9c",
+  sat: "#7eb6ff",
+  iss: "#e7eee8",
+  quake: "#e25a45",
+  launch: "#d7a35a",
 };
+const iconCache = new Map();
+function contactIcon(kind, color) {
+  const key = kind + color;
+  if (iconCache.has(key)) return iconCache.get(key);
+  const path =
+    kind === "quake"
+      ? `<circle cx="16" cy="16" r="6" fill="${color}"/><circle cx="16" cy="16" r="11" fill="none" stroke="${color}" stroke-width="2"/>`
+      : kind === "launch"
+        ? `<rect x="13" y="4" width="6" height="18" rx="2" fill="${color}"/><polygon points="10,22 22,22 16,30" fill="${color}"/>`
+        : kind === "sat"
+          ? `<rect x="12" y="12" width="8" height="8" fill="${color}"/><rect x="4" y="13" width="7" height="6" fill="${color}" opacity=".7"/><rect x="21" y="13" width="7" height="6" fill="${color}" opacity=".7"/>`
+          : `<polygon points="16,2 20,14 16,12 12,14" fill="${color}"/><polygon points="6,14 26,14 16,18" fill="${color}"/><rect x="14.5" y="18" width="3" height="10" fill="${color}"/>`;
+  const uri =
+    "data:image/svg+xml," +
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">${path}</svg>`);
+  iconCache.set(key, uri);
+  return uri;
+}
 
 function upsert(c) {
   const pos = C.Cartesian3.fromDegrees(c.lng, c.lat, Math.max(c.altKm, 0.03) * 1000);
   const color = COLORS[c.kind] || COLORS.flight;
+  const heading = C.Math.toRadians(-(c.heading || 0));
+  const moving = c.kind === "flight" || c.kind === "iss" || c.kind === "sat";
   let e = mesh.entities.getById(c.id);
   if (!e) {
     e = mesh.entities.add({
       id: c.id,
       name: c.name,
       position: pos,
-      point: {
-        pixelSize: c.kind === "iss" ? 14 : c.kind === "launch" ? 10 : 7,
-        color,
-        outlineColor: C.Color.fromCssColorString("#07090c"),
-        outlineWidth: 1,
-        scaleByDistance: new C.NearFarScalar(1.5e3, 1.35, 9.0e6, 0.5),
+      billboard: {
+        image: contactIcon(c.kind, color),
+        width: c.kind === "iss" ? 28 : 18,
+        height: c.kind === "iss" ? 28 : 18,
+        rotation: heading,
+        alignedAxis: moving ? C.Cartesian3.UNIT_Z : C.Cartesian3.ZERO,
+        scaleByDistance: new C.NearFarScalar(1.2e3, 1.4, 8.0e6, 0.45),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
       label: {
@@ -77,8 +126,8 @@ function upsert(c) {
         fillColor: C.Color.fromCssColorString("#e7eee8"),
         showBackground: true,
         backgroundColor: C.Color.fromCssColorString("#07090c").withAlpha(0.55),
-        pixelOffset: new C.Cartesian2(0, -16),
-        scaleByDistance: new C.NearFarScalar(2.5e3, 1, 9.0e5, 0),
+        pixelOffset: new C.Cartesian2(0, -18),
+        scaleByDistance: new C.NearFarScalar(2.0e3, 1, 6.0e5, 0),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
@@ -86,6 +135,7 @@ function upsert(c) {
     e.position = new C.ConstantPositionProperty(pos);
     e.name = c.name;
     if (e.label) e.label.text = c.name;
+    if (e.billboard) e.billboard.rotation = new C.ConstantProperty(heading);
   }
   e.god = c;
   return e;
@@ -109,17 +159,33 @@ function sync() {
   for (const e of drop) mesh.entities.remove(e);
 }
 
-function flyTo(lat, lng, altKm = 12) {
+function flyTo(lat, lng, altKm = CITY_KM) {
   state.target = null;
   state.mode = "free";
   viewer.trackedEntity = undefined;
   viewer.camera.lookAtTransform(C.Matrix4.IDENTITY);
+  const altM = Math.max(altKm, 0.12) * 1000;
+  const nadir = altM > 3.5e6;
   viewer.camera.flyTo({
-    destination: C.Cartesian3.fromDegrees(lng, lat, Math.max(altKm, 0.25) * 1000),
-    duration: 2.3,
+    destination: C.Cartesian3.fromDegrees(lng, lat, altM),
+    orientation: {
+      heading: C.Math.toRadians(nadir ? 0 : 28),
+      pitch: C.Math.toRadians(nadir ? -90 : -40),
+      roll: 0,
+    },
+    duration: nadir ? 3.1 : 2.4,
   });
   renderCard();
 }
+
+viewer.screenSpaceEventHandler.setInputAction((click) => {
+  const ray = viewer.camera.getPickRay(click.position);
+  if (!ray) return;
+  const hit = viewer.scene.globe.pick(ray, viewer.scene);
+  if (!hit) return;
+  const carto = C.Cartographic.fromCartesian(hit);
+  flyTo(C.Math.toDegrees(carto.latitude), C.Math.toDegrees(carto.longitude), STREET_KM);
+}, C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
 function setSensor(id) {
   state.sensor = id;
@@ -131,10 +197,26 @@ function setStatus(s) {
   document.getElementById("status").textContent = s;
 }
 
+function formatAlt(altKm) {
+  if (altKm >= 100) return Math.round(altKm) + " km";
+  if (altKm >= 1) return altKm.toFixed(1) + " km";
+  return Math.round(altKm * 1000) + " m";
+}
+
+function formatCoord(lat, lng) {
+  return `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? "N" : "S"}  ${Math.abs(lng).toFixed(3)}°${lng >= 0 ? "E" : "W"}`;
+}
+
 async function load(path) {
   const res = await fetch("/api/" + path);
   if (!res.ok) throw new Error(path);
   return res.json();
+}
+
+function cameraLatLng() {
+  const carto = viewer.camera.positionCartographic;
+  if (!carto) return { lat: HOME.lat, lng: HOME.lng };
+  return { lat: C.Math.toDegrees(carto.latitude), lng: C.Math.toDegrees(carto.longitude) };
 }
 
 function deadReckon(f, dt) {
@@ -147,7 +229,8 @@ function deadReckon(f, dt) {
 async function refreshFlights() {
   try {
     setStatus("SYNC FLIGHTS");
-    const data = await load("flights");
+    const { lat, lng } = cameraLatLng();
+    const data = await load("flights?lat=" + lat.toFixed(2) + "&lng=" + lng.toFixed(2));
     state.flights = data.flights || [];
     state.source = data.source || "live";
     const pill = document.getElementById("pill");
@@ -289,9 +372,10 @@ function renderSensors() {
 
 function renderMissions() {
   document.getElementById("missions").innerHTML = [
+    ["city", "CITY DIVE"],
+    ["street", "STREET"],
     ["contacts", "LIVE CONTACTS"],
     ["orbit", "ORBITAL WATCH"],
-    ["night", "NIGHT WATCH"],
     ["reset", "RESET"],
   ]
     .map(([id, label]) => `<button type="button" data-m="${id}">${label}</button>`)
@@ -300,18 +384,21 @@ function renderMissions() {
     const b = ev.target.closest("button");
     if (!b) return;
     const m = b.dataset.m;
-    if (m === "contacts") {
+    if (m === "city") {
       state.layers.flights = true;
       setSensor("optical");
-      flyTo(48.1, 11.5, 45);
+      flyTo(HOME.lat, HOME.lng, CITY_KM);
+    } else if (m === "street") {
+      setSensor("optical");
+      flyTo(HOME.lat, HOME.lng, STREET_KM);
+    } else if (m === "contacts") {
+      state.layers.flights = true;
+      setSensor("optical");
+      flyTo(40.641, -73.778, REGION_KM);
     } else if (m === "orbit") {
       state.layers.satellites = true;
-      flyTo(0, -80, 16000);
-    } else if (m === "night") {
-      state.layers.flights = true;
-      setSensor("nvg");
-      flyTo(41.88, -87.63, 8);
-    } else if (m === "reset") flyTo(20, -30, 16000);
+      flyTo(0, -80, GLOBE_KM);
+    } else if (m === "reset") flyTo(20, -30, GLOBE_KM);
     renderDock();
   };
 }
@@ -325,7 +412,7 @@ function renderCard() {
   }
   el.hidden = false;
   el.innerHTML = `<p class="meta">${t.kind.toUpperCase()}</p><h2>${t.name}</h2>
-    <p class="meta">${Math.abs(t.lat).toFixed(3)}° ${t.lat >= 0 ? "N" : "S"}  ${Math.abs(t.lng).toFixed(3)}° ${t.lng >= 0 ? "E" : "W"}</p>
+    <p class="meta">${formatCoord(t.lat, t.lng)}</p>
     <p>${t.meta || ""}</p>
     <div class="row"><button class="go" id="cockpit">COCKPIT</button><button class="ghost" id="drop">DROP</button></div>`;
   document.getElementById("drop").onclick = () => {
@@ -360,6 +447,16 @@ viewer.scene.preUpdate.addEventListener(() => {
     const dt = Math.min(0.05, 0.016);
     for (const f of state.flights) deadReckon(f, dt);
   }
+  const lookEl = document.getElementById("look");
+  if (lookEl) {
+    const carto = viewer.camera.positionCartographic;
+    if (carto) {
+      lookEl.textContent =
+        formatCoord(C.Math.toDegrees(carto.latitude), C.Math.toDegrees(carto.longitude)) +
+        "  ·  " +
+        formatAlt(carto.height / 1000);
+    }
+  }
   const t = state.target;
   if (!t) return;
   const live =
@@ -388,7 +485,7 @@ async function loadGoogle(key) {
     if (C.GoogleMaps) C.GoogleMaps.defaultApiKey = trimmed;
     let tileset;
     if (typeof C.createGooglePhotorealistic3DTileset === "function") {
-      tileset = await C.createGooglePhotorealistic3DTileset();
+      tileset = await C.createGooglePhotorealistic3DTileset({ onlyUsingWithGoogleGeocoder: true });
     } else {
       tileset = await C.Cesium3DTileset.fromUrl(
         "https://tile.googleapis.com/v1/3dtiles/root.json?key=" + encodeURIComponent(trimmed),
@@ -396,6 +493,7 @@ async function loadGoogle(key) {
     }
     viewer.scene.primitives.add(tileset);
     setStatus("GOOGLE 3D TILES");
+    flyTo(HOME.lat, HOME.lng, STREET_KM);
   } catch {
     setStatus("3D TILES FAIL");
   }
@@ -407,6 +505,7 @@ document.getElementById("enter").onclick = () => {
   renderDock();
   renderSensors();
   renderMissions();
+  flyTo(HOME.lat, HOME.lng, CITY_KM);
   void refreshFlights();
   void refreshRest();
   const saved = localStorage.getItem("god-eye-google-tiles-key");
@@ -427,6 +526,7 @@ document.getElementById("about").addEventListener("click", (e) => {
 });
 document.getElementById("gkey-apply").onclick = () => {
   void loadGoogle(document.getElementById("gkey").value);
+  document.getElementById("about").hidden = true;
 };
 
 let geoTimer;
@@ -447,7 +547,7 @@ document.getElementById("q").addEventListener("input", (e) => {
     ul.onclick = (ev) => {
       const b = ev.target.closest("button");
       if (!b) return;
-      flyTo(Number(b.dataset.lat), Number(b.dataset.lng), 12);
+      flyTo(Number(b.dataset.lat), Number(b.dataset.lng), STREET_KM);
       ul.hidden = true;
     };
   }, 280);
@@ -467,7 +567,7 @@ window.addEventListener("keydown", (e) => {
     if (about) about.hidden = true;
   }
   if (e.code === "KeyC" && state.target) state.mode = state.mode === "cockpit" ? "track" : "cockpit";
-  if (e.code === "KeyR") flyTo(20, -30, 16000);
+  if (e.code === "KeyR") flyTo(20, -30, GLOBE_KM);
 });
 
 window.addEventListener("resize", () => viewer.resize());

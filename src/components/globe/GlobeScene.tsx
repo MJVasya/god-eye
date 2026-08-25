@@ -3,6 +3,7 @@ import { compileTle, propagateSats, type LiveSat } from "@/lib/intel/propagate";
 import { getFlightsFn, getLaunchesFn, getQuakesFn, getTleFn } from "@/lib/intel/server";
 import type { Contact, LaunchPad, SensorMode } from "@/lib/geo/types";
 import {
+  cameraLook,
   createEarthViewer,
   flyCamera,
   loadCesium,
@@ -18,15 +19,18 @@ export function GlobeScene() {
   const cameraMode = useOps((s) => s.cameraMode);
   const target = useOps((s) => s.target);
   const flyTo = useOps((s) => s.flyTo);
+  const tilesNonce = useOps((s) => s.tilesNonce);
   const setTarget = useOps((s) => s.setTarget);
   const setCounts = useOps((s) => s.setCounts);
   const setStatus = useOps((s) => s.setStatus);
   const setClock = useOps((s) => s.setClock);
+  const setLook = useOps((s) => s.setLook);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const dsRef = useRef<any>(null);
   const cesiumRef = useRef<any>(null);
+  const tilesRef = useRef<any>(null);
   const flightsRef = useRef<Contact[]>([]);
   const quakesRef = useRef<Contact[]>([]);
   const satsRef = useRef<Contact[]>([]);
@@ -50,7 +54,7 @@ export function GlobeScene() {
         const Cesium = await loadCesium();
         if (dead || !hostRef.current) return;
         cesiumRef.current = Cesium;
-        const viewer = createEarthViewer(Cesium, hostRef.current);
+        const viewer = await createEarthViewer(Cesium, hostRef.current);
         const ds = new Cesium.CustomDataSource("mesh");
         await viewer.dataSources.add(ds);
         viewerRef.current = viewer;
@@ -63,8 +67,22 @@ export function GlobeScene() {
           else if (modeRef.current !== "cockpit") setTarget(null);
         });
         const key = window.localStorage.getItem("god-eye-google-tiles-key");
-        if (key) void loadGoogleTiles(Cesium, viewer, key).catch(() => undefined);
+        if (key) {
+          void loadGoogleTiles(Cesium, viewer, key)
+            .then((t) => {
+              tilesRef.current = t;
+              if (t) setStatus("GOOGLE 3D TILES");
+            })
+            .catch(() => undefined);
+        }
+        let lastLook = 0;
         removeTick = viewer.scene.preUpdate.addEventListener(() => {
+          const now = Date.now();
+          if (now - lastLook > 220) {
+            lastLook = now;
+            const look = cameraLook(Cesium, viewer);
+            if (look) setLook(look);
+          }
           const t = targetRef.current;
           const mode = modeRef.current;
           if (!t || mode === "free") return;
@@ -92,14 +110,40 @@ export function GlobeScene() {
       viewerRef.current?.destroy();
       viewerRef.current = null;
     };
-  }, [setTarget, setStatus]);
+  }, [setTarget, setStatus, setLook]);
+
+  useEffect(() => {
+    const Cesium = cesiumRef.current;
+    const viewer = viewerRef.current;
+    if (!Cesium || !viewer || tilesNonce === 0) return;
+    const key = window.localStorage.getItem("god-eye-google-tiles-key");
+    if (!key) return;
+    if (tilesRef.current) {
+      viewer.scene.primitives.remove(tilesRef.current);
+      tilesRef.current = null;
+    }
+    void loadGoogleTiles(Cesium, viewer, key)
+      .then((t) => {
+        tilesRef.current = t;
+        if (t) setStatus("GOOGLE 3D TILES");
+      })
+      .catch(() => setStatus("3D TILES FAIL"));
+  }, [tilesNonce, setStatus]);
 
   useEffect(() => {
     let cancel = false;
+    const lookLatLng = () => {
+      const Cesium = cesiumRef.current;
+      const viewer = viewerRef.current;
+      if (!Cesium || !viewer) return {};
+      const look = cameraLook(Cesium, viewer);
+      if (!look) return {};
+      return { lat: look.lat, lng: look.lng };
+    };
     const pullFlights = async () => {
       try {
         setStatus("SYNC FLIGHTS");
-        const data = await getFlightsFn();
+        const data = await getFlightsFn({ data: lookLatLng() });
         if (cancel) return;
         flightsRef.current = data.flights;
         setCounts({ flights: data.flights.length, source: data.source });
