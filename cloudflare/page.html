@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOD EYE</title>
+    <meta name="theme-color" content="#07090c" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --void: #07090c;
+        --surface: #101614;
+        --paper: #e7eee8;
+        --muted: #7d8a80;
+        --line: #24302a;
+        --accent: #8fde9c;
+        --accent-fg: #07110c;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; background: var(--void); color: var(--paper);
+        font-family: "IBM Plex Sans", system-ui, sans-serif; }
+      canvas { display: block; }
+      #hud { position: fixed; inset: 0; pointer-events: none; }
+      header, .dock, .sensors, .search, .stats, .missions, .card, .brief, .boot {
+        pointer-events: auto;
+      }
+      header { position: absolute; top: 14px; left: 14px; display: flex; gap: 12px; align-items: center; }
+      .mark { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; display: grid; place-items: center; background: var(--surface); }
+      .brand { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.18em; font-size: 22px; margin: 0; }
+      .sub { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.22em; color: var(--muted); margin: 4px 0 0; }
+      .dock { position: absolute; top: 78px; left: 14px; display: flex; flex-direction: column; gap: 6px; }
+      .dock button, .sensors button, .missions button, .stats span {
+        font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.16em;
+        border: 1px solid var(--line); background: rgba(16,22,20,0.9); color: var(--muted);
+        border-radius: 8px; padding: 8px 10px; cursor: pointer;
+      }
+      .dock button.on, .sensors button.on { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); color: var(--accent); }
+      .sensors { position: absolute; top: 78px; right: 14px; display: flex; flex-direction: column; gap: 6px; align-items: end; }
+      .sensors button.on { background: var(--accent); color: var(--accent-fg); }
+      .search { position: absolute; top: 14px; right: 14px; width: min(18rem, calc(100% - 11rem)); }
+      .search input {
+        width: 100%; background: rgba(16,22,20,0.92); border: 1px solid var(--line); color: var(--paper);
+        border-radius: 12px; padding: 10px 12px; font: 14px "IBM Plex Sans", sans-serif;
+      }
+      .hits { margin: 6px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .hits button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--paper); padding: 8px 12px; cursor: pointer; font-size: 13px; }
+      .hits button:hover { background: #18201c; }
+      .stats { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+      .stats span { color: var(--paper); }
+      .stats b { display: block; font-size: 14px; }
+      .missions { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: end; max-width: 70%; }
+      .missions button { color: var(--paper); }
+      .card {
+        position: absolute; right: 14px; bottom: 72px; width: min(20rem, calc(100% - 28px));
+        background: rgba(16,22,20,0.95); border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+      }
+      .card h2 { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.08em; margin: 4px 0; font-size: 28px; }
+      .card p { margin: 6px 0; color: color-mix(in oklab, var(--paper) 80%, transparent); font-size: 14px; }
+      .card .meta { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); }
+      .card .row { display: flex; gap: 8px; margin-top: 12px; }
+      .card .row button { flex: 1; border: 0; border-radius: 8px; padding: 10px; font-family: "IBM Plex Mono", monospace; letter-spacing: 0.16em; cursor: pointer; }
+      .go { background: var(--paper); color: var(--void); }
+      .ghost { background: transparent; border: 1px solid var(--line) !important; color: var(--muted); }
+      .live { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); }
+      .pill { background: var(--accent); color: var(--accent-fg); border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
+      .pill.sim { background: #d7a35a; color: var(--void); }
+      .boot { position: fixed; inset: 0; background: var(--void); display: grid; place-items: center; z-index: 20; }
+      .boot-card { width: min(28rem, calc(100% - 2rem)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+      .boot-card h1 { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.16em; font-size: 48px; margin: 8px 0; }
+      .boot-card button { width: 100%; margin-top: 20px; border: 0; background: var(--paper); color: var(--void); border-radius: 12px; padding: 12px; font-family: "IBM Plex Mono", monospace; letter-spacing: 0.2em; cursor: pointer; }
+      .note { position: absolute; left: 14px; bottom: 72px; max-width: 18rem; font-family: "IBM Plex Mono", monospace; font-size: 9px; color: var(--muted); line-height: 1.45; pointer-events: auto; }
+      .note a, .src-link, .boot-links a { color: var(--accent); text-decoration: none; }
+      .src-link { display: block; margin-top: 6px; font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+      .boot-links { display: flex; gap: 16px; margin-top: 16px; font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; }
+      .boot-links a.dim { color: var(--muted); }
+      .about { position: absolute; inset: 0; background: color-mix(in oklab, var(--void) 70%, transparent); display: grid; place-items: center; z-index: 30; }
+      .about-card { width: min(28rem, calc(100% - 2rem)); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+      .about-card h2 { font-family: "Barlow Condensed", sans-serif; letter-spacing: 0.12em; font-size: 32px; margin: 8px 0; }
+      .about-card p { font-size: 14px; line-height: 1.5; color: color-mix(in oklab, var(--paper) 85%, transparent); }
+      .about-card a, .about-card button { display: flex; align-items: center; min-height: 44px; margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.18em; text-decoration: none; color: var(--paper); background: var(--void); }
+      .about-card a.primary { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); color: var(--accent); }
+      .about-card button { width: 100%; cursor: pointer; color: var(--muted); }
+      @media (max-width: 720px) {
+        .search, .live, .note { display: none; }
+        .card { bottom: 96px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot" class="boot">
+      <div class="boot-card">
+        <p class="sub">SYSTEM BOOT</p>
+        <h1>GOD EYE</h1>
+        <p>A spy-satellite console built from public broadcasts — flights, orbit, quakes, pads. Free-tier Cloudflare mesh. No classified paths.</p>
+        <button id="enter" type="button">OPEN THE MESH</button>
+        <div class="boot-links">
+          <a href="https://github.com/MJVasya/god-eye" target="_blank" rel="noreferrer">SOURCE</a>
+          <a class="dim" href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noreferrer">CESIUM ORIGINAL</a>
+        </div>
+      </div>
+    </div>
+    <div id="hud" hidden>
+      <header>
+        <div class="mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8fde9c" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
+        </div>
+        <div>
+          <p class="brand">GOD EYE</p>
+          <p class="sub">ORBITAL INTELLIGENCE · PUBLIC MESH</p>
+          <button id="src" class="src-link" type="button">SOURCE · MIT</button>
+        </div>
+      </header>
+      <div class="live"><span id="stamp"></span><span id="pill" class="pill">LIVE</span> <span id="status">STANDBY</span></div>
+      <div class="search">
+        <input id="q" placeholder="Find a city, airport, pad" />
+        <ul id="hits" class="hits" hidden></ul>
+      </div>
+      <div class="dock" id="dock"></div>
+      <div class="sensors" id="sensors"></div>
+      <div class="stats" id="stats"></div>
+      <div class="missions" id="missions"></div>
+      <div id="card" class="card" hidden></div>
+      <p class="note">Public feeds only. Delayed or modeled. Not for navigation or emergency use. Cache-first Worker on the Cloudflare free plan. <a href="https://github.com/MJVasya/god-eye" target="_blank" rel="noreferrer">Source</a> · <a href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noreferrer">Cesium original</a></p>
+      <div id="about" class="about" hidden>
+        <div class="about-card">
+          <p class="sub">ABOUT · MIT</p>
+          <h2>GOD EYE</h2>
+          <p>Independent rewrite for a free-tier Cloudflare Worker. Not a fork. The original Cesium + Google Photorealistic 3D Tiles client is still public and inspectable.</p>
+          <a class="primary" href="https://github.com/MJVasya/god-eye" target="_blank" rel="noreferrer">THIS SOURCE</a>
+          <a href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noreferrer">CESIUM ORIGINAL</a>
+          <button id="about-close" type="button">CLOSE</button>
+        </div>
+      </div>
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

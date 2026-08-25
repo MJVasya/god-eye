@@ -1,0 +1,15 @@
+{
+  "name": "god-eye",
+  "private": false,
+  "license": "MIT",
+  "description": "Public orbital intelligence mesh. Cloudflare Worker SPA + Three.js globe.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MJVasya/god-eye.git"
+  },
+  "homepage": "https://godseye.gogol.me",
+  "bugs": {
+    "url": "https://github.com/MJVasya/god-eye/issues"
+  }
+}
